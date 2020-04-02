@@ -1,0 +1,273 @@
+use strict;
+use warnings;
+use IO::Socket::UNIX;
+use JSON::PP;
+use Irssi;
+use utf8;
+use Scalar::Util qw(blessed);
+
+our $JSON = JSON::PP->new->allow_nonref(1)->canonical(1)->convert_blessed(1);
+
+sub debug { Irssi::print($_[0]) }
+
+my $sock = "$ENV{HOME}/.irssi.sock";
+
+unlink($sock) if -e $sock;
+
+my $server = IO::Socket::UNIX->new(
+  Type => SOCK_STREAM,
+  Local => $sock,
+  Listen => 1
+) or die $!;
+
+$server->blocking(0);
+
+my %clients;
+
+my $server_tag = Irssi::input_add($server->fileno, INPUT_READ, sub {
+  return unless my $client = $server->accept;
+  $client->blocking(0);
+  $clients{$client} = {
+    tag => Irssi::input_add(
+             $client->fileno, INPUT_READ, \&handle_client_read, $client
+           ),
+    buf => '',
+    id => (my ($id) = "$client" =~ /(0x[0-9a-f]+)/),
+  };
+  debug "Client ${id} connected";
+}, undef);
+
+my %object_deflators = (
+  'Irssi::Irc::Server' => sub {
+    my ($server) = @_;
+    my %fields = map {
+      my $val = $server->{$_};
+      (defined($val) && length($val) ? ($_ => $val) : ());
+    } qw(tag nick connected address port chatnet);
+    return \%fields;
+  },
+);
+
+sub deflate_blessed {
+  my ($obj) = @_;
+  my $class = blessed($obj);
+  if (my $deflator = $object_deflators{$class}) {
+    $deflator->($obj);
+  } else {
+    "${obj}"
+  }
+}
+
+sub client_send {
+  my ($client, $raw) = @_;
+  my $cooked = do {
+    if (($clients{$client}{protocol}||'') eq 'JSONY') {
+      join ' ', map encode_jsony($_), @$raw;
+    } else {
+      local *UNIVERSAL::TO_JSON = \&deflate_blessed;
+      $JSON->encode($raw);
+    }
+  };
+  $client->say($cooked);
+}
+
+sub encode_jsony {
+  my ($value) = @_;
+  $value = deflate_blessed $value if blessed $value;
+  my $ref = ref($value);
+  if (!$ref and defined($value)) {
+    return $value if $value =~ /^[A-Za-z_][A-Za-z0-9_]+$/;
+    no warnings 'numeric';
+    return $value
+      if !utf8::is_utf8($value)
+      && length((my $dummy = '') & $value)
+      && 0 + $value eq $value
+      && $value * 0 == 0;
+  }
+  if ($ref eq 'ARRAY') {
+    return join ' ', '[', (map encode_jsony($_), @$value), ']';
+  }
+  if ($ref eq 'HASH') {
+    my @values = map +($_ => $value->{$_}), sort keys %$value;
+    return join ' ', '{', (map encode_jsony($_), @values), '}';
+  }
+  return $JSON->encode($value);
+}
+
+sub client_close {
+  my ($client, $last) = @_;
+  client_send $client, $last if $last;
+  my $state = delete $clients{$client};
+  Irssi::input_remove($state->{tag});
+  close($client);
+  debug "Client ${\$state->{id}} disconnected";
+  return 1;
+}
+
+sub handle_client_read {
+  my ($client) = @_;
+  my $state = $clients{$client};
+  if ($client->sysread($state->{buf}, 131072, 0)) {
+    while ($state->{buf} =~ s/^(.*?)\n//) {
+      my $line = $1;
+      handle_client_line($client, $line);
+    }
+  } else {
+    client_close $client;
+  }
+}
+
+our $JSONY_ERR;
+
+sub handle_client_line {
+  my ($client, $line) = @_;
+  my $state = $clients{$client};
+  debug "Client ${\$state->{id}} sent ${line}";
+  client_close $client and return unless length $line;
+  my $decoder = $state->{decoder} ||= do {
+    if ($line =~ /^\s*\[/) {
+      $state->{protocol} = 'JSON';
+      sub { $JSON->decode($_[0]) }
+    } else {
+      $state->{protocol} = 'JSONY';
+      unless ($INC{'JSONY.pm'} or $JSONY_ERR) {
+        eval { require JSONY; 1 } or do {
+          ($JSONY_ERR = $@) =~ s/\n\z//;
+        };
+      }
+      if ($JSONY_ERR) {
+        client_close $client => [
+          FATAL
+            => "Unable to enter JSONY mode, JSONY.pm failed to load"
+            => $JSONY_ERR
+        ];
+        return;
+      }
+      sub { JSONY->load($_[0]) }
+    }
+  };
+  my $payload = eval { $decoder->($line) } or do {
+    client_close $client => [
+      FATAL
+        => "Failure parsing line", $@
+    ];
+    return;
+  };
+  debug "Got object: ".$JSON->encode($payload);
+  handle_client_request($client, $payload);
+}
+
+sub subs_of_package {
+  my ($package) = @_;
+  no strict 'refs';
+  sort grep !/::\z/ && /^[a-z]/ && exists &{"${package}::${_}"},
+    keys %{"${package}::"};
+}
+
+sub handle_client_request {
+  my ($client, $request) = @_;
+  return client_close $client => [ FATAL => "No command provided" ]
+    unless my ($call, @args) = @$request;
+  return if $call eq '#';
+  my $state = $clients{$client};
+  if ($state->{in_call}) {
+    push @{$state->{queued}}, $request;
+    return;
+  }
+  eval {
+    if (my $ret = handle_call($client, 'Irssi', $call, @args)) {
+      client_send $client => $ret;
+    }
+    1;
+  } or client_send $client => [ fail => DIED => $@ ];
+}
+
+my %special = (
+  methods => sub { [ done => subs_of_package blessed($_[1])||$_[1] ] },
+  Irssi => {
+    server => sub {
+      my ($client, $inv, $tag, @rest) = @_;
+      my $server = Irssi::server_find_tag($tag);
+      return [ fail => "No such server" => $tag ] unless $server;
+      return [ done => $server ] unless @rest;
+      handle_call($client, $server, @rest);
+    },
+  },
+  'Irssi::Irc::Server' => {
+    list => \&server_call_list,
+    join => sub { server_call_generic(join => @_) },
+    part => sub { server_call_generic(part => @_) },
+  },
+);
+
+sub handle_call {
+  my ($client, $inv, $call, @args) = @_;
+  unshift @args, $inv;
+  my $pkg = (my $class = blessed($inv)) || $inv;
+  my $handler = (
+    $call =~ /^\.(.*)$/
+      ? do { my $key = $1; sub { [ done => $inv->{$key} ] } }
+      : ($special{$call} || $special{$pkg}{$call})
+  );
+  if (!$handler and my $sub = $inv->can($call)) {
+    shift @args unless $class;
+    $handler = sub { shift; [ done => $sub->(@_) ] };
+  }
+  unless ($handler) {
+    client_close $client => [ FATAL => "No such method on ${pkg}" => $call ];
+    return;
+  }
+  $handler->($client, @args);
+}
+
+sub server_call_generic {
+  my ($name, $client, $inv, @args) = @_;
+  $inv->send_raw(join ' ', $name, @args);
+  return [ 'done' ];
+}
+
+sub server_call_list {
+  my ($client, $inv) = @_;
+  my $state = $clients{$client};
+  $state->{in_call} = 1;
+  my $id = $state->{id};
+  my @parts = qw(liststart list listend);
+  my %names = (
+    map +($_ => "redir control_port_${id}_$_"), @parts
+  );
+  my @names;
+  my $on_done;
+  my %code = (
+    liststart => sub {},
+    list => sub {
+      my ($server, $data) = @_;
+      push @names, (split ' ', $data)[1];
+    },
+    listend => sub {
+      $on_done->();
+    }
+  );
+  Irssi::signal_add({ map +($names{$_} => $code{$_}), @parts });
+  $inv->redirect_event("list", 1, '', 0, undef, {
+    "event 321" => $names{liststart},
+    "event 322" => $names{list},
+    "event 323" => $names{listend},
+  });
+  $on_done = sub {
+    Irssi::signal_remove($names{$_} => $code{$_}) for @parts;
+    client_send $client => [ done => @names ];
+    $state->{in_call} = 0;
+    while (!$state->{in_call} and @{$state->{queued}||[]}) {
+      handle_client_request($client, shift @{$state->{queued}});
+    }
+  };
+  $inv->send_raw("list");
+  return;
+}
+
+
+
+
+
+
+
