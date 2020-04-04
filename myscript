@@ -168,13 +168,6 @@ sub handle_client_line {
   handle_client_request($client, $payload);
 }
 
-sub subs_of_package {
-  my ($package) = @_;
-  no strict 'refs';
-  sort grep !/::\z/ && /^[a-z]/ && exists &{"${package}::${_}"},
-    keys %{"${package}::"};
-}
-
 sub handle_client_request {
   my ($client, $request) = @_;
   return client_close $client => [ FATAL => "No command provided" ]
@@ -196,7 +189,7 @@ my %special = (
   methods => sub {
     my ($client, $inv, $arg) = @_;
     my $pkg = ref($inv) || $arg || $inv;
-    return [ done => subs_of_package $pkg ];
+    return [ done => subs_of_package($pkg) ];
   },
   Irssi => {
     server => sub {
@@ -244,6 +237,14 @@ my %special = (
     },
   },
 );
+
+sub subs_of_package {
+  my ($package) = @_;
+  no strict 'refs';
+  my @inpkg = grep !/::\z/ && /^[a-z]/ && exists &{"${package}::${_}"},
+    keys %{"${package}::"};
+  return sort @inpkg, keys %{$special{$package}||{}};
+}
 
 sub handle_call {
   my ($client, $inv, $call, @args) = @_;
