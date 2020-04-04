@@ -193,7 +193,11 @@ sub handle_client_request {
 }
 
 my %special = (
-  methods => sub { [ done => subs_of_package blessed($_[1])||$_[1] ] },
+  methods => sub {
+    my ($client, $inv, $arg) = @_;
+    my $pkg = ref($inv) || $arg || $inv;
+    return [ done => subs_of_package $pkg ];
+  },
   Irssi => {
     server => sub {
       my ($client, $inv, $arg) = @_;
