@@ -1,12 +1,20 @@
 use strict;
 use warnings;
 use IO::Socket::UNIX;
-use JSON::PP;
+our $J_CLASS;
+BEGIN {
+  if (eval { require Cpanel::JSON::XS; 1 }) {
+    $J_CLASS = 'Cpanel::JSON::XS';
+  } else {
+    require JSON::PP;
+    $J_CLASS = 'JSON::PP';
+  }
+}
 use Irssi;
 use utf8;
 use Scalar::Util qw(blessed);
 
-our $JSON = JSON::PP->new->allow_nonref(1)->canonical(1)->convert_blessed(1);
+our $JSON = $J_CLASS->new->allow_nonref(1)->canonical(1)->convert_blessed(1);
 
 sub debug { Irssi::print($_[0]) }
 
