@@ -56,6 +56,14 @@ my $server_tag = Irssi::input_add($server->fileno, INPUT_READ, sub {
   debug "Client ${id} connected";
 }, undef);
 
+my %lookups = (
+  'Irssi::Irc::Server' => sub { [ server => $_[0]->{tag} ] },
+  'Irssi::Irc::Channel' => sub {
+    [ [ server => $_[0]->{server}{tag} ] => channel => $_[0]->{name} ]
+  },
+  'Irssi::UI::Window' => sub { [ window => $_[0]->{refnum} ] },
+);
+
 sub deflate_blessed {
   my ($obj) = @_;
   if (my ($type) = ref($obj) =~ /^(Irssi::.+)$/ and eval { 1+keys %$obj }) {
@@ -64,7 +72,7 @@ sub deflate_blessed {
         my $val = $obj->{$_};
         (defined($val) && length($val) ? ($_ => $val) : ());
       } sort keys %$obj
-    } ];
+    }, ($lookups{$type}||sub { () })->($obj) ];
   } else {
     "${obj}"
   }
