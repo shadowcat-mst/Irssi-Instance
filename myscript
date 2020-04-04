@@ -58,7 +58,7 @@ my $server_tag = Irssi::input_add($server->fileno, INPUT_READ, sub {
 
 sub deflate_blessed {
   my ($obj) = @_;
-  if (my ($type) = ref($obj) =~ /^(Irssi::.+)$/ and eval { 1+%$obj }) {
+  if (my ($type) = ref($obj) =~ /^(Irssi::.+)$/ and eval { 1+keys %$obj }) {
     [ $type => {
       map {
         my $val = $obj->{$_};
