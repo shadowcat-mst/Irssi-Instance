@@ -45,22 +45,15 @@ my $server_tag = Irssi::input_add($server->fileno, INPUT_READ, sub {
   debug "Client ${id} connected";
 }, undef);
 
-my %object_deflators = (
-  'Irssi::Irc::Server' => sub {
-    my ($server) = @_;
-    my %fields = map {
-      my $val = $server->{$_};
-      (defined($val) && length($val) ? ($_ => $val) : ());
-    } qw(tag nick connected address port chatnet);
-    return \%fields;
-  },
-);
-
 sub deflate_blessed {
   my ($obj) = @_;
-  my $class = blessed($obj);
-  if (my $deflator = $object_deflators{$class}) {
-    $deflator->($obj);
+  if (my ($type) = ref($obj) =~ /^(Irssi::.+)$/ and eval { %$obj; 1 }) {
+    [ $type => {
+      map {
+        my $val = $obj->{$_};
+        (defined($val) && length($val) ? ($_ => $val) : ());
+      } sort keys %$obj
+    } ];
   } else {
     "${obj}"
   }
@@ -198,9 +191,20 @@ my %special = (
   methods => sub { [ done => subs_of_package blessed($_[1])||$_[1] ] },
   Irssi => {
     server => sub {
-      my ($client, $inv, $tag) = @_;
-      my $server = Irssi::server_find_tag($tag);
-      return [ fail => "No such server" => $tag ] unless $server;
+      my ($client, $inv, $arg) = @_;
+      my @by_name;
+      my $server = do {
+        if (my $tag = (ref($arg) ? $arg->{tag} : $arg)) {
+          @by_name = (tag => $tag);
+          Irssi::server_find_tag($tag);
+        } elsif (my $net = $arg->{chatnet}) {
+          @by_name = (net => $net);
+          Irssi::server_find_chatnet($net);
+        } else {
+          return [ fail => "No tag or net supplied" ];
+        }
+      };
+      return [ fail => "No such server" => @by_name ] unless $server;
       return [ done => $server ];
     },
   },
@@ -208,6 +212,12 @@ my %special = (
     list => \&server_call_list,
     msg => \&inv_call_msg,
     cmd => \&inv_call_cmd,
+    channel => sub {
+      my ($client, $inv, $arg) = @_;
+      my $ch = $inv->channel_find($arg);
+      return [ fail => "No such channel" => $inv->{tag}, $arg ] unless $ch;
+      return [ done => $ch ];
+    },
   },
 );
 
