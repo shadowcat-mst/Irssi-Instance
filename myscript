@@ -2,7 +2,10 @@ use strict;
 use warnings;
 use IO::Socket::UNIX;
 
-sub IrssiSockDestructionGuard::DESTROY { $_[0]->() }
+{
+  no warnings 'redefine';
+  sub IrssiSockDestructionGuard::DESTROY { $_[0]->() }
+}
 
 sub guard (&) {
   bless($_[0], 'IrssiSockDestructionGuard');
