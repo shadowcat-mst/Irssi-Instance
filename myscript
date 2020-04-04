@@ -1,6 +1,13 @@
 use strict;
 use warnings;
 use IO::Socket::UNIX;
+
+sub IrssiSockDestructionGuard::DESTROY { $_[0]->() }
+
+sub guard (&) {
+  bless($_[0], 'IrssiSockDestructionGuard');
+}
+
 our $J_CLASS;
 BEGIN {
   if (eval { require Cpanel::JSON::XS; 1 }) {
@@ -10,6 +17,7 @@ BEGIN {
     $J_CLASS = 'JSON::PP';
   }
 }
+
 use Irssi;
 use utf8;
 use Scalar::Util qw(blessed);
@@ -30,17 +38,17 @@ my $server = IO::Socket::UNIX->new(
 
 $server->blocking(0);
 
-my %clients;
-
 my $server_tag = Irssi::input_add($server->fileno, INPUT_READ, sub {
   return unless my $client = $server->accept;
   $client->blocking(0);
-  $clients{$client} = {
-    tag => Irssi::input_add(
-             $client->fileno, INPUT_READ, \&handle_client_read, $client
-           ),
-    buf => '',
-    id => (my ($id) = "$client" =~ /(0x[0-9a-f]+)/),
+  ${*$client}{tag}
+    = Irssi::input_add(
+        $client->fileno, INPUT_READ, \&handle_client_read, $client
+      );
+  ${*$client}{buf} = '';
+  ${*$client}{id} = my $id = ("$client" =~ /(0x[0-9a-f]+)/)[0];
+  ${*$client}{cleanup} = guard {
+    debug "Client ${id} disconnected";
   };
   debug "Client ${id} connected";
 }, undef);
@@ -62,7 +70,7 @@ sub deflate_blessed {
 sub client_send {
   my ($client, $raw) = @_;
   my $cooked = do {
-    if (($clients{$client}{protocol}||'') eq 'JSONY') {
+    if ((${*$client}{protocol}||'') eq 'JSONY') {
       join ' ', map encode_jsony($_), @$raw;
     } else {
       local *UNIVERSAL::TO_JSON = \&deflate_blessed;
@@ -98,18 +106,14 @@ sub encode_jsony {
 sub client_close {
   my ($client, $last) = @_;
   client_send $client, $last if $last;
-  my $state = delete $clients{$client};
-  Irssi::input_remove($state->{tag});
-  close($client);
-  debug "Client ${\$state->{id}} disconnected";
+  Irssi::input_remove(${*$client}{tag});
   return 1;
 }
 
 sub handle_client_read {
   my ($client) = @_;
-  my $state = $clients{$client};
-  if ($client->sysread($state->{buf}, 131072, 0)) {
-    while ($state->{buf} =~ s/^(.*?)\n//) {
+  if ($client->sysread(${*$client}{buf}, 131072, 0)) {
+    while (${*$client}{buf} =~ s/^(.*?)\n//) {
       my $line = $1;
       handle_client_line($client, $line);
     }
@@ -122,15 +126,14 @@ our $JSONY_ERR;
 
 sub handle_client_line {
   my ($client, $line) = @_;
-  my $state = $clients{$client};
-  debug "Client ${\$state->{id}} sent ${line}";
+  debug "Client ${\${*$client}{id}} sent ${line}";
   client_close $client and return unless length $line;
-  my $decoder = $state->{decoder} ||= do {
+  my $decoder = ${*$client}{decoder} ||= do {
     if ($line =~ /^\[/ and $line =~ /\]$/) {
-      $state->{protocol} = 'JSON';
+      ${*$client}{protocol} = 'JSON';
       sub { $JSON->decode($_[0]) }
     } else {
-      $state->{protocol} = 'JSONY';
+      ${*$client}{protocol} = 'JSONY';
       unless ($INC{'JSONY.pm'} or $JSONY_ERR) {
         eval { require JSONY; 1 } or do {
           ($JSONY_ERR = $@) =~ s/\n\z//;
@@ -174,9 +177,8 @@ sub handle_client_request {
   return client_close $client => [ FATAL => "No command provided" ]
     unless my ($call, @args) = @$request;
   return if $call eq '#';
-  my $state = $clients{$client};
-  if ($state->{in_call}) {
-    push @{$state->{queued}}, $request;
+  if (${*$client}{in_call}) {
+    push @{${*$client}{queued}}, $request;
     return;
   }
   eval {
@@ -269,9 +271,8 @@ sub inv_call_msg {
 
 sub server_call_list {
   my ($client, $inv) = @_;
-  my $state = $clients{$client};
-  $state->{in_call} = 1;
-  my $id = $state->{id};
+  ${*$client}{in_call} = 1;
+  my $id = ${*$client}{id};
   my @parts = qw(liststart list listend);
   my %names = (
     map +($_ => "redir control_port_${id}_$_"), @parts
@@ -297,9 +298,9 @@ sub server_call_list {
   $on_done = sub {
     Irssi::signal_remove($names{$_} => $code{$_}) for @parts;
     client_send $client => [ done => @names ];
-    $state->{in_call} = 0;
-    while (!$state->{in_call} and @{$state->{queued}||[]}) {
-      handle_client_request($client, shift @{$state->{queued}});
+    ${*$client}{in_call} = 0;
+    while (!${*$client}{in_call} and @{${*$client}{queued}||[]}) {
+      handle_client_request($client, shift @{${*$client}{queued}});
     }
   };
   $inv->send_raw("list");
