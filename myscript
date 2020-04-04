@@ -125,7 +125,7 @@ sub handle_client_line {
   debug "Client ${\$state->{id}} sent ${line}";
   client_close $client and return unless length $line;
   my $decoder = $state->{decoder} ||= do {
-    if ($line =~ /^\s*\[/ and $line =~ /\]\s*$/) {
+    if ($line =~ /^\[/ and $line =~ /\]$/) {
       $state->{protocol} = 'JSON';
       sub { $JSON->decode($_[0]) }
     } else {
