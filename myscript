@@ -216,6 +216,12 @@ my %special = (
       return [ fail => "No such server" => @by_name ] unless $server;
       return [ done => $server ];
     },
+    window => sub {
+      my ($client, $inv, $arg) = @_;
+      return [ fail => "No such window" => $arg ]
+        unless my $window = Irssi::window_find_refnum($arg);
+      return [ done => $window ];
+    },
   },
   'Irssi::Irc::Server' => {
     list => \&server_call_list,
