@@ -1,10 +1,10 @@
 package Irssi::Instance::_::Conduit;
 
 use Irssi::Instance::_Do;
+use Import::Into;
 use Mojo::IOLoop;
 use Mojo::JSON qw(encode_json decode_json);
 use curry;
-use Class::Method::Modifiers;
 use Mojo::Util qw(monkey_patch);
 use Mojo::Base qw(Mojo::EventEmitter -async_await -signatures);
 
@@ -16,36 +16,31 @@ has 'buf';
 
 has rq => sub { [] };
 
-around new => sub ($orig, $class, @args) {
-  $class->$orig(@args)
-        ->buf('')
-        ->tap(sub ($self) {
-            $self->on(msg => $self->curry::weak::_handle_msg)
-          });
-};
+our %Did_Setup;
 
-our %Methods_Of;
-
-async sub _ensure_methods ($self, $pkg) {
-  $Methods_Of{$pkg} ||= do {
-    my @methods = await $self->call(methods => $pkg);
-    (my $inst_pkg = $pkg) =~ s/^Irssi/Irssi::Instance/;
-    monkey_patch $inst_pkg => map {
+async sub setup_package ($self, $pkg) {
+  $Did_Setup{$pkg} ||= do {
+    Mojo::Base->import::into($pkg, 'Irssi::Instance::_::Object')
+      unless $pkg->can('new');
+    (my $remote_pkg = $pkg) =~ s/^Irssi::Instance/Irssi/;
+    my @methods = await $self->call(methods => $remote_pkg);
+    monkey_patch $pkg => map {
       my $m = $_;
-      ($m, sub { shift->conduit->call($m => @_) })
+      ($m, sub ($self, @args) {
+        $self->conduit->call($self->lookup_via//(), $m => @args)
+      });
     } @methods;
-    \@methods
+    1;
   };
+  return $self;
 }
 
 sub start { shift->connect(@_) } # should reconnect
 
 async sub connect ($self) {
   my $s = await Mojo::IOLoop->$_do(client => { path => $self->socket_path });
-  $self->stream($s);
   $s->on(read => $self->curry::weak::_handle_read);
-  await $self->_ensure_methods('Irssi');
-  $self;
+  $self->stream($s)->buf('');
 }
 
 sub _handle_read ($self, $, $bytes) {
@@ -53,23 +48,52 @@ sub _handle_read ($self, $, $bytes) {
   while ($self->{buf} =~ s/^(.*?)\n//) {
     my $str = $1;
     my $msg = decode_json($str);
-    $self->emit(msg => $msg);
+    my ($type, @payload) = @$msg;
+    if ($type eq 'done' or $type eq 'fail') {
+      die "No request queued" unless my $req = shift @{$self->rq};
+      $req->$type(@payload);
+    }
   }
   return;
-}
-
-sub _handle_msg ($self, $, $msg) {
-  my ($type, @payload) = @$msg;
-  if ($type eq 'done' or $type eq 'fail') {
-    die "No request queued" unless my $req = shift @{$self->rq};
-    $req->$type(@payload);
-  }
 }
 
 async sub call ($self, @call) {
   $self->stream->write(encode_json(\@call)."\n");
   push @{$self->rq}, my $f = Future::Mojo->new;
-  await $f;
+  return await $self->_expand(await $f);
+}
+
+async sub _expand ($self, @payload) {
+  my @expanded;
+  foreach my $item (@payload) {
+    if (ref($item) eq 'HASH') {
+      my %exp;
+      @exp{keys %$item} = await $self->_expand(values %$item);
+      push @expanded, \%exp;
+      next;
+    }
+    if (ref($item) eq 'ARRAY') {
+      if (@$item) {
+        my $class = $item->[0];
+        if (
+          defined($class) and !ref($class)
+          and $class =~ s/^Irssi::/Irssi::Instance::/
+        ) {
+          await $self->setup_package($class);
+          push @expanded, $class->new(
+            conduit => $self,
+            attrs => $item->[1],
+            ($item->[2] ? (lookup_via => $item->[2]) : ())
+          );
+          next;
+        }
+      }
+      push @expanded, [ await $self->_expand(@$item) ];
+      next;
+    }
+    push @expanded, $item;
+  }
+  return @expanded;
 }
 
 1;
