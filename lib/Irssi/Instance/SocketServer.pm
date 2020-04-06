@@ -1,7 +1,11 @@
 {
   package Irssi::Instance::SocketServer;
 
-  sub file_path { $INC{'Irssi/Instance/SocketServer.pm'} }
+  use Cwd ();
+
+  our $ORIGIN = Cwd::abs_path(__FILE__);
+
+  sub file_path { $ORIGIN }
 }
 
 BEGIN {
