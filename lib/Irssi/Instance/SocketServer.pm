@@ -1,5 +1,28 @@
+{
+  package Irssi::Instance::SocketServer;
+
+  sub file_path { $INC{'Irssi/Instance/SocketServer.pm'} }
+}
+
+BEGIN {
+  # if loaded as a plain perl module, we use a maximally stupid source filter
+  # to replace the rest of the while with a '1;' so that we load as a module
+  # to make the file_path method available
+
+  unless ((Irssi->can('in_irssi')||sub{0})->()) {
+    require Filter::Util::Call;
+    Filter::Util::Call::filter_add(sub {
+      Filter::Util::Call::filter_del();
+      1 while Filter::Util::Call::filter_read();
+      $_ = '1;';
+      return 0; # EOF
+    });
+  }
+}
+
 use strict;
 use warnings;
+use Irssi;
 use IO::Socket::UNIX;
 
 {
@@ -21,7 +44,6 @@ BEGIN {
   }
 }
 
-use Irssi;
 use utf8;
 use Scalar::Util qw(blessed);
 
@@ -338,9 +360,4 @@ sub server_call_list {
   return;
 }
 
-
-
-
-
-
-
+0; # ensure that if we load in irssi mode we fail as a .pm file

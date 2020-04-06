@@ -1,4 +1,4 @@
-package Irssi::Instance::_::Conduit;
+package Irssi::Instance::SocketClient;
 
 use Irssi::Instance::_Do;
 use Import::Into;
@@ -79,7 +79,7 @@ async sub _expand ($self, @payload) {
         ) {
           Mojo::Base->import::into($class, 'Irssi::Instance::_::RemoteObject')
             unless $class->can('new');
-          my $obj = $class->new(conduit => $self, attrs => $item->[1]);
+          my $obj = $class->new(socket_client => $self, attrs => $item->[1]);
           if (my $lookup_via = $item->[2]) {
             await $self->register_methods_for($obj, $lookup_via);
           }
