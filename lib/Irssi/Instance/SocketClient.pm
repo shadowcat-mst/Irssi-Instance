@@ -1,10 +1,9 @@
 package Irssi::Instance::SocketClient;
 
-use Irssi::Instance::_Do;
 use Import::Into;
 use Mojo::IOLoop;
 use Mojo::JSON qw(encode_json decode_json);
-use Irssi::Instance::_::Base;
+use Irssi::Instance::Base;
 use curry;
 use Mojo::Base qw(-base -async_await -signatures);
 
@@ -27,13 +26,22 @@ async sub register_methods_for ($self, $obj, $lookup_via) {
   foreach my $m (@$methods) {
     # Must have been loaded by ::Base or we're screwed already
     Mojo::DynamicMethods::register(
-      'Irssi::Instance::_::Base' => $obj => $m => $lookup_via
+      'Irssi::Instance::Base' => $obj => $m => $lookup_via
     );
   }
   return $obj;
 }
 
 sub start { shift->connect(@_) } # should reconnect
+
+
+sub _connect_p ($self, $path) {
+  Mojo::Promise->new->tap(sub ($p) {
+    Mojo::IOLoop->client({ path => $path }, sub ($, $err, @result) {
+      $err and $p->reject($err) or $p->resolve(@result);
+    });
+  });
+}
 
 async sub connect ($self) {
   my $socket_path = $self->socket_path;
@@ -44,10 +52,12 @@ async sub connect ($self) {
         ."server is loaded. The server script can be found at path:\n\n"
         .Irssi::Instance::SocketServer->file_path."\n";
   }
-  my $s = await Mojo::IOLoop->$_do(client => { path => $socket_path });
+  my $s = await $self->_connect_p($socket_path);
   $s->on(read => $self->curry::weak::_handle_read);
   $self->stream($s)->buf('');
 }
+
+my %responses = (done => 'resolve', fail => 'reject');
 
 sub _handle_read ($self, $, $bytes) {
   $self->{buf} .= $bytes;
@@ -55,9 +65,9 @@ sub _handle_read ($self, $, $bytes) {
     my $str = $1;
     my $msg = decode_json($str);
     my ($type, @payload) = @$msg;
-    if ($type eq 'done' or $type eq 'fail') {
+    if (my $method = $responses{$type}) {
       die "No request queued" unless my $req = shift @{$self->rq};
-      $req->$type(@payload);
+      $req->$method(@payload);
     }
   }
   return;
@@ -65,8 +75,8 @@ sub _handle_read ($self, $, $bytes) {
 
 async sub call ($self, @call) {
   $self->stream->write(encode_json(\@call)."\n");
-  push @{$self->rq}, my $f = Future::Mojo->new;
-  return await $self->_expand(await $f);
+  push @{$self->rq}, my $p = Mojo::Promise->new;
+  return await $self->_expand(await $p);
 }
 
 async sub _expand ($self, @payload) {
@@ -85,7 +95,7 @@ async sub _expand ($self, @payload) {
           defined($class) and !ref($class)
           and $class =~ s/^Irssi::/Irssi::Instance::/
         ) {
-          Mojo::Base->import::into($class, 'Irssi::Instance::_::RemoteObject')
+          Mojo::Base->import::into($class, 'Irssi::Instance::RemoteObject')
             unless $class->can('new');
           my $obj = $class->new(socket_client => $self, attrs => $item->[1]);
           if (my $lookup_via = $item->[2]) {

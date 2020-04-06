@@ -1,4 +1,4 @@
-package Irssi::Instance::_::Base;
+package Irssi::Instance::Base;
 
 use Mojo::Base qw(-base -signatures);
 use Mojo::DynamicMethods qw(-dispatch);
