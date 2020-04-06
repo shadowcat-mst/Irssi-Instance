@@ -290,14 +290,14 @@ sub inv_call_cmd {
 }
 
 sub inv_call_msg {
-  my ($client, $inv, $name, $target, @args) = @_;
-  my $msg = join ' ', @args;
+  my ($client, $inv, $name, @args) = @_;
+  my $msg = pop @args;
   if ($name eq 'action') {
     $msg = "\x01ACTION ${msg}\x01";
     $name = 'privmsg';
   }
   $msg = ":${msg}" if length $msg;
-  inv_call_cmd $client, $inv, $name, $target, $msg;
+  inv_call_cmd $client, $inv, $name, @args, $msg;
 }
 
 sub server_call_list {

@@ -4,9 +4,9 @@ use Irssi::Instance::_Do;
 use Import::Into;
 use Mojo::IOLoop;
 use Mojo::JSON qw(encode_json decode_json);
+use Irssi::Instance::_::Base;
 use curry;
-use Mojo::Util qw(monkey_patch);
-use Mojo::Base qw(Mojo::EventEmitter -async_await -signatures);
+use Mojo::Base qw(-base -async_await -signatures);
 
 has 'socket_path';
 
@@ -16,23 +16,21 @@ has 'buf';
 
 has rq => sub { [] };
 
-our %Did_Setup;
+has methods_of => sub { {} };
 
-async sub setup_package ($self, $pkg) {
-  $Did_Setup{$pkg} ||= do {
-    Mojo::Base->import::into($pkg, 'Irssi::Instance::_::Object')
-      unless $pkg->can('new');
+async sub register_methods_for ($self, $obj, $lookup_via) {
+  my $pkg = ref($obj);
+  my $methods = $self->methods_of->{$pkg} ||= do {
     (my $remote_pkg = $pkg) =~ s/^Irssi::Instance/Irssi/;
-    my @methods = await $self->call(methods => $remote_pkg);
-    monkey_patch $pkg => map {
-      my $m = $_;
-      ($m, sub ($self, @args) {
-        $self->conduit->call($self->lookup_via//(), $m => @args)
-      });
-    } @methods;
-    1;
+    [ await $self->call(methods => $remote_pkg) ];
   };
-  return $self;
+  foreach my $m (@$methods) {
+    # Must have been loaded by ::Base or we're screwed already
+    Mojo::DynamicMethods::register(
+      'Irssi::Instance::_::Base' => $obj => $m => $lookup_via
+    );
+  }
+  return $obj;
 }
 
 sub start { shift->connect(@_) } # should reconnect
@@ -79,12 +77,13 @@ async sub _expand ($self, @payload) {
           defined($class) and !ref($class)
           and $class =~ s/^Irssi::/Irssi::Instance::/
         ) {
-          await $self->setup_package($class);
-          push @expanded, $class->new(
-            conduit => $self,
-            attrs => $item->[1],
-            ($item->[2] ? (lookup_via => $item->[2]) : ())
-          );
+          Mojo::Base->import::into($class, 'Irssi::Instance::_::RemoteObject')
+            unless $class->can('new');
+          my $obj = $class->new(conduit => $self, attrs => $item->[1]);
+          if (my $lookup_via = $item->[2]) {
+            await $self->register_methods_for($obj, $lookup_via);
+          }
+          push @expanded, $obj;
           next;
         }
       }
