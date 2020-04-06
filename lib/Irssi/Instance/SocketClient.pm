@@ -36,7 +36,15 @@ async sub register_methods_for ($self, $obj, $lookup_via) {
 sub start { shift->connect(@_) } # should reconnect
 
 async sub connect ($self) {
-  my $s = await Mojo::IOLoop->$_do(client => { path => $self->socket_path });
+  my $socket_path = $self->socket_path;
+  unless (-S $socket_path) {
+    require Irssi::Instance::SocketServer;
+    die "Can't connect: ${socket_path} is not a socket.\n\n"
+        ."Please check your irssi instance is running and that the socket\n"
+        ."server is loaded. The server script can be found at path:\n\n"
+        .Irssi::Instance::SocketServer->file_path."\n";
+  }
+  my $s = await Mojo::IOLoop->$_do(client => { path => $socket_path });
   $s->on(read => $self->curry::weak::_handle_read);
   $self->stream($s)->buf('');
 }
