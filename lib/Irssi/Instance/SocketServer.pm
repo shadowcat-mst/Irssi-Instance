@@ -364,4 +364,6 @@ sub server_call_list {
   return;
 }
 
+sub UNLOAD { unlink($sock) if $server }
+
 0; # ensure that if we load in irssi mode we fail as a .pm file
