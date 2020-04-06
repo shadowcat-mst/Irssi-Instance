@@ -17,4 +17,13 @@ async sub start ($self) {
   await $cn->register_methods_for($self, undef);
 }
 
+sub await ($, $p) {
+  die "Irssi::Instance await method only valid at top level.\n"
+    if $p->ioloop->is_running;
+  my (@result, $err) = @_;
+  $p->then(sub { @result = @_ }, sub { ($err) = @_ })->wait;
+  die $err if $err;
+  return wantarray ? $result[0] : @result;
+}
+
 1;
