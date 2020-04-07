@@ -1,0 +1,19 @@
+#!perl
+
+use Irssi::Instance;
+use Mojo::Base -signatures, -strict, -async_await;
+
+my $irssi = Irssi::Instance->new->async(1);
+
+async sub run () {
+  my $irssi = await $irssi->start;
+  warn await $irssi->get_irssi_dir;
+
+  my ($server) = await $irssi->servers;
+  await $server->cmd(join => '#bottest');
+
+  $server = await $irssi->server($server->get_attr('tag'));
+  await $server->msg(part => '#bottest' => 'Goodbye cruel world');
+}
+
+$irssi->await(run());

@@ -1,0 +1,17 @@
+#!perl
+
+use strict;
+use warnings;
+use Irssi::Instance;
+
+my $irssi = Irssi::Instance->new->start;
+
+warn $irssi->get_irssi_dir;
+
+my ($server) = $irssi->servers;
+
+$server->cmd(join => '#bottest');
+
+$server = $irssi->server($server->get_attr('tag'));
+
+$server->msg(part => '#bottest' => 'Goodbye cruel world');

@@ -9,6 +9,8 @@ use Mojo::Base qw(-base -async_await -signatures);
 
 has 'socket_path';
 
+has 'async';
+
 has 'stream';
 
 has 'buf';
@@ -21,19 +23,21 @@ async sub register_methods_for ($self, $obj, $lookup_via) {
   my $pkg = ref($obj);
   my $methods = $self->methods_of->{$pkg} ||= do {
     (my $remote_pkg = $pkg) =~ s/^Irssi::Instance/Irssi/;
-    [ await $self->call(methods => $remote_pkg) ];
+    [ await $self->call_p(methods => $remote_pkg) ];
   };
   foreach my $m (@$methods) {
     # Must have been loaded by ::Base or we're screwed already
     Mojo::DynamicMethods::register(
       'Irssi::Instance::Base' => $obj => $m => $lookup_via
     );
+    Mojo::DynamicMethods::register(
+      'Irssi::Instance::Base' => $obj => "cast_$m" => $lookup_via
+    );
   }
   return $obj;
 }
 
 sub start { shift->connect(@_) } # should reconnect
-
 
 sub _connect_p ($self, $path) {
   Mojo::Promise->new->tap(sub ($p) {
@@ -73,7 +77,36 @@ sub _handle_read ($self, $, $bytes) {
   return;
 }
 
-async sub call ($self, @call) {
+sub await ($self, $p) {
+  Carp::croak "await method only valid at top level"
+    if $p->ioloop->is_running;
+  $self->_await($p);
+}
+
+sub _await ($self, $p) {
+  my (@result, $rejected);
+  $p->then(sub { @result = @_ }, sub { $rejected = 1; @result = @_ })->wait;
+  if ($rejected) {
+    my $reason = $result[0] // 'Promise was rejected';
+    die $reason if ref $reason or $reason =~ m/\n\z/;
+    Carp::croak $reason;
+  }
+  return wantarray ? @result : $result[0];
+
+}
+
+sub call ($self, @call) {
+  my $p = $self->call_p(@call);
+  return $self->async ? $p : $self->await($p);
+}
+
+sub cast ($self, @call) {
+  $self->stream->write(encode_json(\@call)."\n");
+  push @{$self->rq}, Mojo::Promise->new->catch(sub{});
+  return $self;
+}
+
+async sub call_p ($self, @call) {
   $self->stream->write(encode_json(\@call)."\n");
   push @{$self->rq}, my $p = Mojo::Promise->new;
   return await $self->_expand(await $p);

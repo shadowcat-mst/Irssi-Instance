@@ -1,0 +1,17 @@
+#!perl
+
+use strict;
+use warnings;
+use Irssi::Instance;
+
+my $irssi = Irssi::Instance->new->async(1)->await('start');
+
+warn $irssi->await('get_irssi_dir');
+
+my ($server) = $irssi->await('servers');
+
+$server->await(cmd => join => '#bottest');
+
+$server = $irssi->await(server => $server->get_attr('tag'));
+
+$server->await(msg => part => '#bottest' => 'Goodbye cruel world');

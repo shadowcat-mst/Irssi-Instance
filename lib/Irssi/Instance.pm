@@ -16,9 +16,19 @@ has socket_client => sub ($self) {
   );
 };
 
-async sub start ($self) {
-  await +(my $cn = $self->socket_client)->start;
-  await $cn->register_methods_for($self, undef);
+sub async ($self, $value = return $self->socket_client->async) {
+  $self->socket_client->async($value);
+  return $self;
+}
+
+sub start ($self) {
+  my $p = $self->_start;
+  return $self->socket_client->async ? $p : $self->await($p);
+}
+
+async sub _start ($self) {
+  await +(my $sc = $self->socket_client)->start;
+  await $sc->register_methods_for($self, undef);
 }
 
 1;
