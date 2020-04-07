@@ -13,6 +13,7 @@ has socket_path => sub { "$ENV{HOME}/.irssi.sock" };
 has socket_client => sub ($self) {
   Irssi::Instance::SocketClient->new(
     socket_path => $self->socket_path,
+    'async' => $self->{async},
   );
 };
 

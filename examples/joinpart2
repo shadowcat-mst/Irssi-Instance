@@ -3,7 +3,7 @@
 use Irssi::Instance;
 use Mojo::Base -signatures, -strict, -async_await;
 
-my $irssi = Irssi::Instance->new->async(1);
+my $irssi = Irssi::Instance->new(async => 1);
 
 async sub run () {
   my $irssi = await $irssi->start;
