@@ -130,7 +130,10 @@ async sub _expand ($self, @payload) {
         ) {
           Mojo::Base->import::into($class, 'Irssi::Instance::RemoteObject')
             unless $class->can('new');
-          my $obj = $class->new(socket_client => $self, attrs => $item->[1]);
+          my $obj = $class->new(
+            socket_client => $self,
+            attrs => await $self->_expand($item->[1]),
+          );
           if (my $lookup_via = $item->[2]) {
             await $self->register_methods_for($obj, $lookup_via);
           }
