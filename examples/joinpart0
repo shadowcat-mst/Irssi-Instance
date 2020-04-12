@@ -12,6 +12,6 @@ my ($server) = $irssi->servers;
 
 $server->cmd(join => '#bottest');
 
-$server = $irssi->server($server->get_attr('tag'));
+$server = $irssi->server($server->('tag'));
 
 $server->msg(part => '#bottest' => 'Goodbye cruel world');

@@ -1,0 +1,18 @@
+use strict;
+use warnings;
+use Irssi::Instance;
+use Devel::DDCWarn;
+
+sub irssi { Irssi::Instance->new->start }
+
+sub say { STDOUT->say(@_) }
+
+sub debug { ::Dwarn($_[0]) }
+
+use xcl::script;
+
+let conn = irssi();
+
+conn.list_windows() where .'active' |
+  { (($.'refnum', $.'active'.'name')) } |
+  { ++ '' $.0 ': ' $.1 } | say;
