@@ -260,15 +260,6 @@ my %special = (
       return [ fail => "No such channel" => $inv->{tag}, $arg ] unless $ch;
       return [ done => $ch ];
     },
-    channel_names => sub {
-      my ($client, $inv) = @_;
-      # This is wrong in the presence of channel keys and needs fixing if so
-      [ done => split ',', $inv->get_channels ];
-    },
-    channels => sub {
-      my ($client, $inv) = @_;
-      [ done => map $inv->channel_find($_), split ',', $inv->get_channels ]
-    },
   },
 );
 
@@ -277,7 +268,8 @@ sub subs_of_package {
   no strict 'refs';
   my @inpkg = grep !/::\z/ && /^[a-z]/ && exists &{"${package}::${_}"},
     keys %{"${package}::"};
-  return sort @inpkg, keys %{$special{$package}||{}};
+  my @inherited = map subs_of_package($_), @{"${package}::ISA"};
+  return sort @inpkg, @inherited, keys %{$special{$package}||{}};
 }
 
 sub handle_call {
