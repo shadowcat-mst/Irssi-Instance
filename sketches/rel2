@@ -19,9 +19,9 @@ let conn = irssi();
 conn.list_servers().each {
   let tag = $.'tag';
   let server = this;
-  $.list_channels().where(
-    { server.window_find_item($.'name').'refnum'.Int() > 600 }
+  $.list_channels().map(.'name').where(
+    { server.window_find_item(this).'refnum'.to_int() > 600 }
   ).each {
-    say [ ++ tag ' ' $.'name' ];
+    say [ ++ tag ' ' this ];
   }
 }
