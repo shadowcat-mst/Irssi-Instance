@@ -1,0 +1,27 @@
+use strict;
+use warnings;
+use Irssi::Instance;
+use Devel::DDCWarn;
+
+sub irssi {
+  Irssi::Instance->new(socket_path => '/home/matthewt/tmp/ag')
+                 ->start
+}
+
+sub say { STDOUT->say(@_) }
+
+sub debug { ::Dwarn($_[0]) }
+
+use xcl::script;
+
+let conn = irssi();
+
+conn.list_servers().each {
+  let tag = $.'tag';
+  let server = this;
+  $.list_channels().where(
+    { server.window_find_item($.'name').'refnum'.Int() > 600 }
+  ).each {
+    say [ ++ tag ' ' $.'name' ];
+  }
+}
