@@ -12,16 +12,22 @@ sub say { STDOUT->say(@_) }
 
 sub debug { ::Dwarn($_[0]) }
 
+sub get_argv { \@ARGV }
+
 use xcl::script;
+
+let loosechans = conn => {
+  conn.list_servers().each {
+    let tag = $.'tag';
+    let server = this;
+    $.list_channels() | .'name' | .where {
+      server.window_find_item(this).'refnum'.to_int() > 600
+    } | \[ ++ tag ' ' ] | say;
+  }
+}
 
 let conn = irssi();
 
-conn.list_servers().each {
-  let tag = $.'tag';
-  let server = this;
-  $.list_channels() | .'name' | .where {
-    server.window_find_item(this).'refnum'.to_int() > 600
-  } | {
-    say [ ++ tag ' ' this ];
-  }
-}
+let argv = get_argv();
+
+Scope.current().call argv.head().to_name() conn;
