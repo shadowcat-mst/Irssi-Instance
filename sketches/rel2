@@ -22,7 +22,7 @@ let loosechans = (conn, args) => {
     let server = this;
     $.list_channels() | .'name' | .where {
       server.window_find_item(this).'refnum'.to_int() > 600
-    } | \[ ++ tag ' ' ] | say;
+    } | { ++ tag ' ' this } | say;
   }
 }
 
