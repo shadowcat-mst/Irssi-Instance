@@ -29,6 +29,8 @@ use warnings;
 use Irssi;
 use IO::Socket::UNIX;
 
+{ package Irssi::Nick } # squelch "can't find package for @ISA" warnings
+
 {
   no warnings 'redefine';
   sub IrssiSockDestructionGuard::DESTROY { $_[0]->() }
