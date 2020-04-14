@@ -16,7 +16,7 @@ sub get_argv { \@ARGV }
 
 use xcl::script;
 
-let loosechans = conn => {
+let loosechans = (conn, args) => {
   conn.list_servers().each {
     let tag = $.'tag';
     let server = this;
@@ -26,8 +26,38 @@ let loosechans = conn => {
   }
 }
 
+let catwins = (conn, catp) => {
+  let cat = catp.to_int();
+  let base = cat * 100;
+  let top = base + 99;
+  Int.range(base, top) | conn.window_find_refnum;
+}
+
+let listcat = (conn, args) => {
+  catwins(conn, args.0).where exists .'active' | .'active'.'name' | say;
+}
+
+let firstfree_of = (conn, cat) => {
+  [catwins(conn, cat).where not exists .'active'].0.'refnum';
+}
+
+let firstfree = (conn, args) => {
+  say firstfree_of(conn, args.0);
+}
+
+let numof = (conn, args) => {
+  say conn.window_find_item(args.0).'refnum';
+}
+
+let catassign = (conn, args) => {
+  let win = conn.window_find_item(args.0);
+  let destnum = firstfree_of(conn, args.1);
+  say ++('Moving ', win.'refnum', ' to ', destnum);
+  win.set_refnum(destnum);
+}
+
 let conn = irssi();
 
 let argv = get_argv();
 
-Scope.current().call argv.head().to_name() conn;
+Scope.current().call argv.head().to_name() conn argv.tail();
