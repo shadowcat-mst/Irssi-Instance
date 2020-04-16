@@ -16,6 +16,13 @@ sub get_argv { \@ARGV }
 
 use xcl::script;
 
+# Usage:
+#   <me> loosechans          # find channels kicking around uncategorised
+#   <me> numof '#foo'        # window number currently containing #foo
+#   <me> listcat 3           # show all channels in 3xx windows
+#   <me> firstfree 3         # print first unused window number in 3xx
+#   <me> catassign '#foo' 3  # move channel #foo to first free 3xx window
+
 let loosechans = (conn, args) => {
   conn.list_servers().each {
     let tag = $.'tag';
