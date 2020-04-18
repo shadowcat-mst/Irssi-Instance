@@ -41,7 +41,7 @@ let catwins = (conn, catp) => {
 }
 
 let listcat = (conn, args) => {
-  catwins(conn, args.0) | { exists $.'active'.'name' } | say;
+  catwins(conn, args.0) | .(Value.maybe) .'active'.'name' | say;
 }
 
 let firstfree_of = (conn, cat) => {
