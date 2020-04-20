@@ -60,7 +60,7 @@ let catassign = (conn, args) => {
   let win = conn.window_find_item(args.0);
   let destnum = firstfree_of(conn, args.1);
   say ++('Moving ', win.'refnum', ' to ', destnum);
-  win.set_refnum(destnum);
+  exists win.set_refnum(destnum);
 }
 
 let conn = irssi();

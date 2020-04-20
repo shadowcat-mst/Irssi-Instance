@@ -9,6 +9,8 @@ Irssi::Instance::Protocol - The socket protocol for L<Irssi::Instance>
 
 =head1 PROTOCOL
 
+The protocol, in so far as there is one, is newline delimited JSON(Y).
+
 (note: if the first line starts and ends with [] it's assumed to be JSON
 as handled by L<JSON::PP> or optionally L<Cpanel::JSON::XS> - if it does
 not, it's assumed to be L<JSONY>. Examples will be in L<JSONY> form but

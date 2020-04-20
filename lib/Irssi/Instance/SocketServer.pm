@@ -29,7 +29,9 @@ use warnings;
 use Irssi;
 use IO::Socket::UNIX;
 
-{ package Irssi::Nick } # squelch "can't find package for @ISA" warnings
+# squelch "can't find package for @ISA" warnings
+{ package Irssi::Nick }
+{ package Irssi::Chatnet }
 
 {
   no warnings 'redefine';
