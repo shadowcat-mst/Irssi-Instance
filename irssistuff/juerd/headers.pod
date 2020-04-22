@@ -1,0 +1,77 @@
+=head1 NAME
+
+Irssi header specification
+
+=head1 SYNOPSIS
+
+    use strict;
+    use vars qw($VERSION %IRSSI);
+    
+    # header begins here
+    use Irssi 20020120.0250 ();
+    $VERSION = "123";
+    %IRSSI = (
+        authors     => "J. Doe, A. U. Thor",
+	contact     => "jdoe\@user.org, a.u.thor\@a.galaxy.far.away",
+        name        => "Foo",
+        description => "Short description",
+        license     => "GPL/1",
+        url         => "http://foo/",
+        changed	    => "Sun Jan 20 02:51:16 CET 2002",
+    );
+    # ends here
+
+    ...
+
+=head1 DESCRIPTION
+
+This module and sample implementation defina a standardized header format for Irssi scripts.
+Another header format was already proposed, but I thought it would be better if Irssi could
+use the data, and the info was completely perl-executable. Also, i wanted $VERSION to be
+parsed in the same fashion it is done by CPAN, to enable Irssi scripters to upload their
+Irssi scripts to the CPAN (Comprehensive Perl Archive Network), when Irssi can handle it.
+
+The other header format at this time (2/3/2002) no longer exists. The author recommends
+users to use this format instead.
+
+=head1 DATA REQUIREMENTS
+
+Every key/value pair, including the "use Irssi" line and the "$VERSION =" line, needs its own
+single line. "%IRSSI = (" and ");" need their own lines as well. The ");" of the %IRSSI definition
+must be the very first occurence of that string on it's own line (add a comment if you really need
+it elsewhere). This all follows common Perl style rules.
+
+The Irssi version number needs to be in the same format Irssi wants it: "yyyymmdd.hhMM".
+Do NOT use variable interpolation.
+
+Data in %IRSSI needs to be in no particular format, and all values except "name" are optional.
+However, scripters are advised to include at least the following: "authors" (warning: plural!),
+"contact", and "description". Not mentioning "license" implies whoever finds the script may use
+it the way s/he wishes.
+Other useable values would be "changed" (a date) and "url".
+
+This header should be first in the file, or at least before any line that matches "/^\s*\);\s*$/".
+
+=head1 BENEFITS
+
+This is parseable by perl (using this module) and executable by perl, allowing you to use the
+data somewhere else in your script. Because global variables are used, Irssi can access the data
+in %PACKAGE::IRSSI and %PACKAGE::VERSION in future versions of Irssi.
+Because $VERSION is eval()ed in the same way ExtUtils::MakeMaker does, scripts using this header
+format can be uploaded to CPAN and CVS versions can be used (see the MakeMaker documentation).
+
+=head1 AUTHOR
+
+Juerd <juerd@juerd.nl>
+
+=head1 SEE ALSO
+
+http://strugglers.net/~dgl/irssi.html - The other proposal
+
+http://irssi.org/ - The official Irssi site
+
+http://juerd.nl/irssi/ - Home of this document
+
+http://scripts.irssi.de/ - Huge Irssi script archive
+
+=cut
