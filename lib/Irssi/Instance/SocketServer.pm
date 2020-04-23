@@ -190,7 +190,8 @@ sub handle_client_line {
       }
       sub {
         my $ret = JSONY->load($_[0]);
-        shift @$ret if $ret->[0] eq '!';
+        $ret = [ $ret ] unless ref $ret; # 0.1.20 bug
+        shift @$ret if $ret->[0] eq '!'; # 0.1.19 and below bug
         $ret;
       };
     }
