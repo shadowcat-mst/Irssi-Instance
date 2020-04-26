@@ -1,0 +1,39 @@
+use strict;
+use warnings;
+use Irssi::Instance;
+use Devel::DDCWarn;
+
+sub irssi {
+  Irssi::Instance->new->start
+}
+
+sub get_argv { \@ARGV }
+
+sub sleep { sleep $_[0] }
+
+use xcl::script;
+
+let argv = get_argv();
+
+let deadline = argv.0.to_int();
+
+let interval = ?: exists(argv.1) argv.1.to_int() 5;
+
+let num_intervals = [ deadline / interval ].round_down_to_int();
+
+let remainder = deadline - [num_intervals * interval];
+
+let conn = irssi();
+
+let say = str => {
+  exists conn.server('co').msg 'privmsg' '#bottest' str
+}
+
+Int.range 1 num_intervals | {
+  sleep 60*interval;
+  say [ ++ 'Elapsed: ' this*interval ' of ' deadline ];
+}
+
+sleep 60*remainder;
+
+say 'mst: DEADLINE';
