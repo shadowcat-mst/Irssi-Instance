@@ -34,7 +34,7 @@ if true {
   msg = str => { exists conn.server('co').msg 'privmsg' '#bottest' str }
 }
 
-Int.range 1 num_intervals | {
+1 .. num_intervals | {
   sleep mult*interval;
   msg [ ++ 'Elapsed: ' this*interval ' of ' deadline ];
 }
