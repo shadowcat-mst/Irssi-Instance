@@ -29,6 +29,18 @@ sub start ($self) {
   return $p->await::this;
 }
 
+sub run ($self) { Mojo::IOLoop->start }
+sub stop ($self) { Mojo::IOLoop->stop }
+
+sub provides_command ($self, $name, $cb) {
+  my $sc = $self->socket_client;
+  my $event_name = "command ${name}";
+  my $p = $self->subscribe_p("command", $name)
+               ->then::_(sub { $sc->on($event_name => $cb); $self });
+  return $p if $self->async;
+  return $p->await::this;
+}
+
 1;
 
 =head1 NAME

@@ -28,6 +28,7 @@ use strict;
 use warnings;
 use Irssi;
 use IO::Socket::UNIX;
+use Scalar::Util qw(weaken);
 
 # squelch "can't find package for @ISA" warnings
 { package Irssi::Nick }
@@ -182,7 +183,7 @@ sub handle_client_line {
       }
       if ($JSONY_ERR) {
         client_close $client => [
-          FATAL
+          barf
             => "Unable to enter JSONY mode, JSONY.pm failed to load"
             => $JSONY_ERR
         ];
@@ -198,7 +199,7 @@ sub handle_client_line {
   };
   my $payload = eval { $decoder->($line) } or do {
     client_close $client => [
-      FATAL
+      barf
         => "Failure parsing line", $@
     ];
     return;
@@ -209,7 +210,7 @@ sub handle_client_line {
 
 sub handle_client_request {
   my ($client, $request) = @_;
-  return client_close $client => [ FATAL => "No command provided" ]
+  return client_close $client => [ barf => "No command provided" ]
     unless my ($call, @args) = @$request;
   return if $call eq '#';
   if (${*$client}{in_call}) {
@@ -254,6 +255,8 @@ my %special = (
         unless my $window = Irssi::window_find_refnum($arg);
       return [ done => $window ];
     },
+    subscribe => \&handle_subscribe,
+    unsubscribe => \&handle_unsubscribe,
   },
   'Irssi::Irc::Server' => {
     list => \&server_call_list,
@@ -300,7 +303,7 @@ sub handle_call {
     $handler = sub { shift; [ done => $sub->(@_) ] };
   }
   unless ($handler) {
-    client_close $client => [ FATAL => "No such method on ${pkg}" => $call ];
+    client_close $client => [ barf => "No such method on ${pkg}" => $call ];
     return;
   }
   $handler->($client, @args);
@@ -359,6 +362,29 @@ sub server_call_list {
   };
   $inv->send_raw("list");
   return;
+}
+
+sub handle_subscribe {
+  my ($client, undef, $sub_to_type, $sub_to) = @_;
+  return [ fail => 'Unsupported subscription to type' => $sub_to_type ]
+    unless $sub_to_type eq 'command';
+  weaken($client);
+  my $sub = sub {
+    client_send($client, [ cast => "$sub_to_type $sub_to" => @_ ]);
+  };
+  Irssi::command_bind($sub_to, $sub);
+  ${*$client}{subscriptions}{$sub_to} = guard {
+    Irssi::command_unbind($sub_to, $sub);
+  };
+  return [ 'done' ];
+}
+
+sub handle_unsubscribe {
+  my ($client, undef, $sub_to_type, $sub_to) = @_;
+  return [ fail => 'Unsupported subscription to type' => $sub_to_type ]
+    unless $sub_to_type eq 'command';
+  delete ${*$client}{subscriptions}{$sub_to};
+  return [ 'done' ];
 }
 
 sub UNLOAD { unlink($sock) if $server }

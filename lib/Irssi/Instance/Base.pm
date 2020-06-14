@@ -19,7 +19,7 @@ sub BUILD_DYNAMIC ($class, $method, $dyn_methods) {
     my $call_method = (
       $method =~ s/^cast_//
         ? 'cast'
-        : ($sc->async ? 'call_p' : 'await::call_p')
+        : (($method =~ s/_p$// or $sc->async) ? 'call_p' : 'await::call_p')
     );
     return $sc->$call_method(@id, $method, @args);
   }

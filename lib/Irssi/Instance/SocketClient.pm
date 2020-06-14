@@ -2,7 +2,7 @@ package Irssi::Instance::SocketClient;
 
 use Mojo::JSON qw(encode_json decode_json);
 use Irssi::Instance::Base;
-use Mojo::Base qw(-base -async_await -signatures);
+use Mojo::Base qw(Mojo::EventEmitter -async_await -signatures);
 
 has 'socket_path';
 
@@ -26,6 +26,9 @@ async sub register_methods_for ($self, $obj, $lookup_via) {
     # Must have been loaded by ::Base or we're screwed already
     Mojo::DynamicMethods::register(
       'Irssi::Instance::Base' => $obj => $m => $lookup_via
+    );
+    Mojo::DynamicMethods::register(
+      'Irssi::Instance::Base' => $obj => "${m}_p" => $lookup_via
     );
     Mojo::DynamicMethods::register(
       'Irssi::Instance::Base' => $obj => "cast_$m" => $lookup_via
@@ -69,6 +72,8 @@ sub _handle_read ($self, $, $bytes) {
     if (my $method = $responses{$type}) {
       die "No request queued" unless my $req = shift @{$self->rq};
       $req->$method(@payload);
+    } elsif ($type eq 'cast') {
+      $self->emit(@payload);
     }
   }
   return;
