@@ -1,10 +1,7 @@
 package Irssi::Instance::SocketClient;
 
-use Import::Into;
-use Mojo::IOLoop;
 use Mojo::JSON qw(encode_json decode_json);
 use Irssi::Instance::Base;
-use curry;
 use Mojo::Base qw(-base -async_await -signatures);
 
 has 'socket_path';
@@ -77,39 +74,19 @@ sub _handle_read ($self, $, $bytes) {
   return;
 }
 
-sub await ($self, $p) {
-  Carp::croak "await method only valid at top level"
-    if $p->ioloop->is_running;
-  $self->_await($p);
-}
-
-sub _await ($self, $p) {
-  my (@result, $rejected);
-  $p->then(sub { @result = @_ }, sub { $rejected = 1; @result = @_ })->wait;
-  if ($rejected) {
-    my $reason = $result[0] // 'Promise was rejected';
-    die $reason if ref $reason or $reason =~ m/\n\z/;
-    Carp::croak $reason;
-  }
-  return wantarray ? @result : $result[0];
-
-}
-
-sub call ($self, @call) {
-  my $p = $self->call_p(@call);
-  return $self->async ? $p : $self->await($p);
+async sub call_p ($self, @call) {
+  return await $self->_expand(await $self->_queue(@call));
 }
 
 sub cast ($self, @call) {
-  $self->stream->write(encode_json(\@call)."\n");
-  push @{$self->rq}, Mojo::Promise->new->catch(sub{});
+  $self->_queue(@call)->catch(sub {});
   return $self;
 }
 
-async sub call_p ($self, @call) {
+sub _queue ($self, @call) {
   $self->stream->write(encode_json(\@call)."\n");
   push @{$self->rq}, my $p = Mojo::Promise->new;
-  return await $self->_expand(await $p);
+  return $p;
 }
 
 async sub _expand ($self, @payload) {

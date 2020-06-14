@@ -5,7 +5,6 @@ our $VERSION = '0.000001'; # 0.0.1
 $VERSION = eval $VERSION;
 
 use Irssi::Instance::SocketClient;
-use Import::Into;
 use Mojo::Base qw(Irssi::Instance::Base -signatures -async_await);
 
 has socket_path => sub { "$ENV{HOME}/.irssi.sock" };
@@ -23,13 +22,11 @@ sub async ($self, $value = return $self->socket_client->async) {
 }
 
 sub start ($self) {
-  my $p = $self->_start;
-  return $self->socket_client->async ? $p : $self->await($p);
-}
-
-async sub _start ($self) {
-  await +(my $sc = $self->socket_client)->start;
-  await $sc->register_methods_for($self, undef);
+  my $p = $self->socket_client
+               ->start
+               ->then::register_methods_for($self, undef);
+  return $p if $self->async;
+  return $p->await::this;
 }
 
 1;
