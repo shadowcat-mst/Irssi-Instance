@@ -56,6 +56,18 @@ for the available calls on C<Irssi::> or
 
 to get a result of the available calls on an C<Irssi::Irc::Server> object.
 
+To provide a command name, send:
+
+  >> subscribe command cmdname
+
+After which you will receive messages of the form:
+
+  << cast "command cmdname" "<command args>" <server> <primary window item>
+
+which you can do whatever you want with. To stop them coming:
+
+  >> unsubscribe command cmdname
+
 For full details on what you can and can't call, please refer to
 L<https://github.com/irssi/irssi/blob/master/docs/perl.txt>.
 
