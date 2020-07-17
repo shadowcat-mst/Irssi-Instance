@@ -58,7 +58,7 @@ to get a result of the available calls on an C<Irssi::Irc::Server> object.
 
 To provide a command name, send:
 
-  >> subscribe command cmdname
+  >> subscribe "command cmdname"
 
 After which you will receive messages of the form:
 
@@ -66,7 +66,11 @@ After which you will receive messages of the form:
 
 which you can do whatever you want with. To stop them coming:
 
-  >> unsubscribe command cmdname
+  >> unsubscribe "command cmdname"
+
+Similarly, one can subscribe to signals via: subscribe "signal signame".
+
+Note that this only gives you a notification that the signal fired.
 
 For full details on what you can and can't call, please refer to
 L<https://github.com/irssi/irssi/blob/master/docs/perl.txt>.
