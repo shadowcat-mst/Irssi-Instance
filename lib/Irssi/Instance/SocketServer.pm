@@ -365,16 +365,25 @@ sub server_call_list {
 }
 
 sub handle_subscribe {
-  my ($client, undef, $sub_to_type, $sub_to) = @_;
-  return [ fail => 'Unsupported subscription to type' => $sub_to_type ]
-    unless $sub_to_type eq 'command';
+  my ($client, undef, $sub_to) = @_;
+  return [ fail => 'Unsupported subscription' => $sub_to ]
+    unless my ($type, $name) = $sub_to =~ /^(command|signal) (.+)$/;
   weaken($client);
   my $sub = sub {
-    client_send($client, [ cast => "$sub_to_type $sub_to" => @_ ]);
+    client_send($client, [ cast => $sub_to => @_ ]);
   };
-  Irssi::command_bind($sub_to, $sub);
+  my ($set, $unset) = do {
+    if ($type eq 'command') {
+      (Irssi->can('command_bind'), Irssi->can('command_unbind'))
+    } elsif ($type eq 'signal') {
+      (Irssi->can('signal_add'), Irssi->can('signal_remove'))
+    } else {
+      die "NOTREACHED";
+    }
+  };
+  $set->($name, $sub);
   ${*$client}{subscriptions}{$sub_to} = guard {
-    Irssi::command_unbind($sub_to, $sub);
+    $unset->($name, $sub);
   };
   return [ 'done' ];
 }

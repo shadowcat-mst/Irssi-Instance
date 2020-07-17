@@ -21,25 +21,30 @@ sub async ($self, $value = return $self->socket_client->async) {
   return $self;
 }
 
+sub _await ($self, $p) {
+  return $p if $self->async;
+  return $p->await::this;
+}
+
 sub start ($self) {
   my $p = $self->socket_client
                ->start
                ->then::register_methods_for($self, undef);
-  return $p if $self->async;
-  return $p->await::this;
+  return $self->_await($p);
 }
 
 sub run ($self) { Mojo::IOLoop->start }
 sub stop ($self) { Mojo::IOLoop->stop }
 
-sub provides_command ($self, $name, $cb) {
+sub on ($self, $event_name, $cb) {
   my $sc = $self->socket_client;
-  my $event_name = "command ${name}";
-  my $p = $self->subscribe_p("command", $name)
+  my $p = $self->subscribe_p($event_name)
                ->then::_(sub { $sc->on($event_name => $cb); $self });
-  return $p if $self->async;
-  return $p->await::this;
+  return $self->_await($p);
 }
+
+sub on_command ($self, $name, $cb) { $self->on("command $name", $cb) }
+sub on_signal  ($self, $name, $cb) { $self->on("signal $name",  $cb) }
 
 1;
 
